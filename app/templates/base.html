@@ -27,7 +27,7 @@
     <header class="topbar">
       <strong>{{ title }}</strong>
       <span class="topbar__meta">RUN-20261116 · ASIA/SHANGHAI</span>
-      <button class="btn btn--primary" id="run">运行样例</button>
+      {% block topbar_action %}<button class="btn btn--primary" id="run">运行样例</button>{% endblock %}
     </header>
     <main class="content">{% block content %}{% endblock %}</main>
     <footer class="statusbar"><span>校验位 7F · 待归档</span><span id="feedback">就绪</span></footer>
@@ -35,6 +35,6 @@
 </div>
 <script src="/static/app.js"></script>
 <script src="/static/table.js"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>
-

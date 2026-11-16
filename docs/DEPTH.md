@@ -11,7 +11,7 @@
 | M1 清单采信 | 导入扫描清单并定位坏行 | POST /api/scans/import | `app/modules/m1_intake/parser.py` `app/modules/m1_intake/integrity.py` | `tests/test_m1_intake.py` |
 | M2 期版契约 | 规范期号、版次和页码 | POST /api/issues/normalize | `app/modules/m2_issue/rules.py` `app/modules/m2_issue/catalog.py` | `tests/test_m2_issue.py` |
 | M3 页码序列 | 查缺页、重页与越界页 | POST /api/pages/check | `app/modules/m3_pages/sequence.py` `app/modules/m3_pages/reconcile.py` | `tests/test_m3_pages.py` |
-| M4 重扫判定 | 比较扫描候选并保留清晰版本 | POST /api/rescans/evaluate | `app/modules/m4_rescans/similarity.py` `app/modules/m4_rescans/decision.py` | `tests/test_m4_rescans.py` |
+| M4 重扫采信 | 导入扫描清单、按证据裁决并发布采纳页 | POST /api/rescans/import；POST /api/rescans/decide；GET /api/rescans/state；GET /api/rescans/batches/{batch_id} | `app/modules/m4_rescans/intake.py` `app/modules/m4_rescans/adjudication.py` `app/modules/m4_rescans/repository.py` | `tests/test_m4_rescans.py` `tests/test_m4_rescan_workflow.py` |
 | M5 混期归因 | 用页眉和页码证据裁决混期 | POST /api/mixed/evaluate | `app/modules/m5_mixed/evidence.py` `app/modules/m5_mixed/conflicts.py` | `tests/test_m5_mixed.py` |
 | M6 批次对账 | 检查四账并导出证据 | POST /api/reconcile | `app/modules/m6_batches/compare.py` `app/modules/m6_batches/exporter.py` | `tests/test_m6_batches.py` |
 
@@ -29,6 +29,19 @@
 | TRAP-19 | 候选顺序改变 | 先到者决定保留项 | 显式排序键保持顺序无关 | `app/modules/m3_pages/sequence.py` | `tests/test_m3_pages.py::test_selection_order_independent` |
 | TRAP-22 | 同内容多别名 | 合并顺序改变代表扫描 | 清晰度后以时间和文件名择一 | `app/modules/m4_rescans/decision.py` | `tests/test_m4_rescans.py::test_selection_is_deterministic_on_tie` |
 | TRAP-26 | 陈旧重扫晚提交 | 旧版本覆盖新版 | 版本优先于输入顺序 | `app/modules/m3_pages/sequence.py` | `tests/test_m3_pages.py::test_higher_version_wins_not_later_input` |
+| TRAP-27 | 补扫清单到达后刷新采纳页 | 覆盖归档扫描或冻结导致补扫无效 | 归档批次按导入字节冻结，裁决只切换当前采纳页 | `app/modules/m4_rescans/intake.py` | `tests/test_m4_rescan_workflow.py::test_archive_batch_keeps_original_evidence_after_rescan` |
+| TRAP-28 | 页眉缺失/不符的重扫候选 | 相似度更高即自动采信 | 留作候选，只能复核采信并写明理由 | `app/modules/m4_rescans/adjudication.py` | `tests/test_m4_rescan_workflow.py::test_missing_header_candidate_waits_for_review` |
+| TRAP-29 | 两人同时裁决同一页 | 后写覆盖前写 | 版本比对，过期决定返回 STALE_VERSION | `app/modules/m4_rescans/adjudication.py` | `tests/test_m4_rescan_workflow.py::test_two_concurrent_decisions_only_one_wins` |
+| TRAP-30 | 发布中断后重试 | 重复点击新增决定或页面停在半态 | 决定先留档，发布独立事务；重试同一 request_id 只重放 | `app/modules/m4_rescans/adjudication.py` | `tests/test_m4_rescan_workflow.py::test_publish_interruption_keeps_original_page_and_retry_adds_no_decision` |
+| TRAP-31 | 采信后只看当前页 | 缺页/对账与采纳页不同步 | 发布事务一起切换采纳页、页序缺口与扫描件四账 | `app/modules/m4_rescans/intake.py` | `tests/test_m4_rescan_workflow.py::test_adoption_switches_gaps_and_accounts_together` |
+
+## 重扫采信规则
+
+- 业务键为期号 + 版次 + 页码；同一业务键的同一文件与摘要只保留一份原件。
+- 页眉一致才可普通采信；页眉缺失或不符只能复核采信（REVIEW_APPROVE）并写明理由。
+- 采信理由码：`BASELINE` `CLEARER_SCAN` `EXACT_COPY` `REVIEW_APPROVED` `MANUAL_OVERRIDE` `REJECTED`。
+- 决定只追加；发布只允许 `PENDING → PUBLISHED/SUPERSEDED`，已发布的行不再改写。
+- 归档批次快照（扫描原件、当时缺页、混期证据）在导入事务内冻结，裁决不改写它。
 
 ## 对账规则
 

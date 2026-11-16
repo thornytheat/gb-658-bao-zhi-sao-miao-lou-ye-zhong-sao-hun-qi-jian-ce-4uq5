@@ -1,27 +1,182 @@
 {% extends "base.html" %}
+{% block topbar_action %}<a class="btn" href="/api/rescans/evidence.csv">导出证据</a><button class="btn btn--primary" id="import-manifest">导入清单</button>{% endblock %}
 {% block content %}
 <section class="kpis">
-  <div class="kpi"><b>扫描件</b><strong>7</strong><small>条</small></div>
-  <div class="kpi"><b>通过</b><strong>5</strong><small>条</small></div>
-  <div class="kpi"><b>隔离</b><strong>1</strong><small>条</small></div>
-  <div class="kpi"><b>规则版</b><strong>1.4</strong><small>v</small></div>
+  <div class="kpi"><b>扫描原件</b><strong>{{ accounts.scans }}</strong><small>条</small></div>
+  <div class="kpi"><b>当前采纳</b><strong>{{ accounts.adopted }}</strong><small>页</small></div>
+  <div class="kpi"><b>待复核</b><strong>{{ accounts.review + accounts.mixed }}</strong><small>条</small></div>
+  <div class="kpi"><b>隔离</b><strong>{{ accounts.quarantined }}</strong><small>条</small></div>
 </section>
-<div class="grid grid--receipt">
+
+{% if pending %}
+<section class="banner banner--warn" id="pending-banner">
+  <div><b>发布中断</b> <span id="pending-count">{{ pending|length }}</span> 条决定已保存但未发布，页面仍显示原采纳页。</div>
+  {% for item in pending %}
+  <button class="btn btn--small" data-resume="{{ item.decision_id }}">重试发布 · REV {{ item.revision }}</button>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="grid grid--rescan">
   <section class="panel">
-    <div class="panel__head"><h2>重扫判定</h2><span class="state state--ok">通过</span></div>
+    <div class="panel__head"><h2>当前采纳页</h2><span class="panel__meta">{{ groups|length }} 个业务键</span></div>
     <div class="panel__body panel__body--scroll">
-      <table class="ledger"><thead><tr><th>序号</th><th>业务键</th><th>状态</th><th class="num">值</th></tr></thead>
-      <tbody>{% for row in rows %}<tr><td class="num">{{ loop.index }}</td><td>{{ row.key }}</td><td>{{ row.status }}</td><td class="num">{{ row.value }}</td></tr>{% endfor %}</tbody></table>
+      <table class="ledger ledger--wide" id="groups">
+        <thead><tr><th>期号</th><th>版次</th><th>页码</th><th>归档原件</th><th>当前采纳页</th><th>理由</th><th class="num">版本</th><th></th></tr></thead>
+        <tbody>
+        {% for row in group_rows %}
+          <tr>
+            <td>{{ row.issue }}</td><td>{{ row.edition }}</td><td class="num">{{ row.page }}</td>
+            <td>{{ row.original_file }} <small>{{ row.original_clarity }}</small></td>
+            <td class="{{ 'is-changed' if row.changed else '' }}">{{ row.adopted_file }} <small>{{ row.adopted_clarity }}</small></td>
+            <td>{{ row.reason }}</td>
+            <td class="num">{{ row.revision }}</td>
+            <td class="actions">{% if row.adopted_scan_id %}<button class="btn btn--small btn--ghost" data-retract="{{ row.business_key }}" data-scan="{{ row.adopted_scan_id }}" data-revision="{{ row.revision }}">撤回采信</button>{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">尚未导入清单</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
   </section>
-  <section class="panel panel--evidence">
-    <div class="panel__head"><h2>证据</h2><span class="panel__meta">5 条</span></div>
-    <div class="panel__body"><div class="evidence"><b>RUN-658-4</b><span>LINE 5</span><code>/api/rescans/evaluate</code></div><pre id="result">等待运行</pre></div>
-  </section>
-  <section class="panel panel--status">
-    <div class="panel__head"><h2>原因分布</h2><span class="panel__meta">1 类</span></div>
-    <div class="panel__body"><div class="bar"><i style="width:73%"></i></div><div class="legend"><span>采纳 7</span><span>隔离 1</span></div></div>
-  </section>
-</div>
-{% endblock %}
 
+  <section class="panel panel--evidence">
+    <div class="panel__head"><h2>扫描件对账</h2><span class="panel__meta">{{ '守恒' if accounts.balanced else '差额 ' ~ accounts.difference }}</span></div>
+    <div class="panel__body">
+      <div class="evidence">
+        <div><b>{{ accounts.input }}</b><span>扫描件账</span></div>
+        <div><b>{{ accounts.adopted }}</b><span>采纳</span></div>
+        <div><b>{{ accounts.superseded }}</b><span>被替代</span></div>
+        <div><b>{{ accounts.mixed }}</b><span>混期</span></div>
+        <div><b>{{ accounts.review }}</b><span>待复核</span></div>
+        <div><b>{{ accounts.quarantined }}</b><span>隔离</span></div>
+      </div>
+      <pre id="result">等待裁决</pre>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>候选与复核</h2><span class="panel__meta">{{ candidates|length }} 条</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger ledger--wide" id="candidates">
+        <thead><tr><th>页码</th><th>扫描件</th><th class="num">清晰度</th><th>页眉</th><th>状态</th><th>裁决</th></tr></thead>
+        <tbody>
+        {% for item in candidates %}
+          <tr data-key="{{ item.business_key }}" data-scan="{{ item.scan.scan_id }}">
+            <td class="num">{{ item.page }}</td>
+            <td>{{ item.scan.file_name }}</td>
+            <td class="num">{{ item.scan.clarity }}</td>
+            <td>{{ item.scan.header_issue or '缺失' }}</td>
+            <td>{{ item.status }}</td>
+            <td class="actions">
+              {% if item.requires_review %}
+              <button class="btn btn--small" data-action="REVIEW_APPROVE" data-revision="{{ item.revision }}">复核采信</button>
+              {% else %}
+              <button class="btn btn--small" data-action="ADOPT" data-revision="{{ item.revision }}">采信</button>
+              {% endif %}
+              <button class="btn btn--small btn--ghost" data-action="REJECT" data-revision="{{ item.revision }}">不采信</button>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">无候选</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>页序缺口</h2><span class="panel__meta">随采信切换</span></div>
+    <div class="panel__body">
+      <table class="ledger" id="gaps">
+        <thead><tr><th>期号</th><th>版次</th><th class="num">应有</th><th>缺页</th></tr></thead>
+        <tbody>
+        {% for gap in gaps %}
+          <tr><td>{{ gap.issue }}</td><td>{{ gap.edition }}</td><td class="num">{{ gap.expected_count }}</td>
+            <td>{{ gap.missing|join(', ') if gap.missing else '完整' }}</td></tr>
+        {% else %}
+          <tr><td colspan="4">无</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>历次决定</h2><span class="panel__meta">不可改写</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger ledger--wide" id="history">
+        <thead><tr><th>业务键</th><th class="num">版本</th><th>动作</th><th>理由</th><th>裁决人</th><th>状态</th><th>时间</th></tr></thead>
+        <tbody>
+        {% for item in decision_rows %}
+          <tr><td>{{ item.business_key }}</td><td class="num">{{ item.revision }}</td><td>{{ item.action }}</td>
+            <td title="{{ item.reason_text }}">{{ item.reason_code }}</td><td>{{ item.actor }}</td>
+            <td>{{ item.publish_state }}</td><td>{{ item.decided_at }}</td></tr>
+        {% else %}
+          <tr><td colspan="7">尚无决定</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel__head"><h2>归档批次</h2><span class="panel__meta">原扫描 · 当时证据</span></div>
+    <div class="panel__body">
+      <div class="batch-list" id="batches">
+        {% for batch in batches %}
+        <button class="batch" data-batch="{{ batch.batch_id }}">
+          <b>{{ batch.batch_id }}</b><span>{{ batch.created_at }}</span>
+          <small>采纳 {{ batch.accepted }} · 隔离 {{ batch.quarantined }}</small>
+        </button>
+        {% else %}
+        <p>无归档批次</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel--full">
+    <div class="panel__head"><h2>归档对照</h2><span class="panel__meta" id="archive-label">选择批次</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger ledger--wide" id="archive">
+        <thead><tr><th>行号</th><th>业务键</th><th>原扫描</th><th class="num">清晰度</th><th>页眉</th><th>归档时采纳</th><th>当前采纳页</th></tr></thead>
+        <tbody><tr><td colspan="7">选择左侧批次查看原扫描；当前采纳页另列对照，归档快照不改写</td></tr></tbody>
+      </table>
+      <table class="ledger ledger--wide" id="archive-evidence">
+        <thead><tr><th>行号</th><th>业务键</th><th>原因码</th><th>原值</th><th>说明</th></tr></thead>
+        <tbody><tr><td colspan="5">当时的缺页与混期证据</td></tr></tbody>
+      </table>
+      <table class="ledger ledger--wide" id="archive-gaps">
+        <thead><tr><th>期号</th><th>版次</th><th class="num">应有</th><th>归档时缺页</th></tr></thead>
+        <tbody><tr><td colspan="4">归档时的页序缺口</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+<dialog id="import-dialog">
+  <form id="import-form" method="post" action="/api/rescans/import" enctype="multipart/form-data">
+    <h2>导入扫描清单</h2>
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <div class="dialog__actions">
+      <button type="button" class="btn btn--ghost" data-close>取消</button>
+      <button type="submit" class="btn btn--primary">导入</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="review-dialog">
+  <form id="review-form">
+    <h2>复核采信</h2>
+    <p id="review-target"></p>
+    <label>采信理由<input name="reason_text" maxlength="400" required></label>
+    <div class="dialog__actions">
+      <button type="button" class="btn btn--ghost" data-close>取消</button>
+      <button type="submit" class="btn btn--primary">确认采信</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="/static/m4.js"></script>{% endblock %}

@@ -1,13 +1,15 @@
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.config import APP_VERSION
+from app.errors import DomainError
 from app.store import init_db
 from app.modules.m1_intake.handler import router as m1_intake_router
 from app.modules.m2_issue.handler import router as m2_issue_router
 from app.modules.m3_pages.handler import router as m3_pages_router
 from app.modules.m4_rescans.handler import router as m4_rescans_router
+from app.modules.m4_rescans.adjudication import recover_all
 from app.modules.m5_mixed.handler import router as m5_mixed_router
 from app.modules.m6_batches.handler import router as m6_batches_router
 
@@ -22,15 +24,27 @@ app.include_router(m4_rescans_router)
 app.include_router(m5_mixed_router)
 app.include_router(m6_batches_router)
 
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError):
+    return JSONResponse(
+        status_code=exc.status,
+        content={"detail": {"code": exc.code, "message": exc.message, **exc.details}},
+    )
+
+
 @app.on_event("startup")
 def startup():
     init_db()
+    # 发布中断可恢复：重启后重放积压的 PENDING 决定；仍失败的重试留给页面。
+    recover_all()
+
 
 @app.get("/", include_in_schema=False)
 def home():
     return RedirectResponse("/intake")
 
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": APP_VERSION}
-

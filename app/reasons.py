@@ -6,5 +6,24 @@ REASONS = {
     "TRUNCATED_INPUT": "输入尾部不完整",
     "UNKNOWN_REFERENCE": "引用对象不存在",
     "RECONCILE_DIFF": "对账不相等",
+    # M4 清单导入 / 采信裁决
+    "BAD_SHA256": "扫描件摘要不是 64 位十六进制",
+    "MISSING_COLUMN": "清单表头缺少必需列",
+    "COLUMN_COUNT": "清单行列数不齐",
+    "EMPTY_FILE": "清单内容为空",
+    "HEADER_MISSING": "页眉缺失，候选留待复核",
+    "HEADER_MISMATCH": "页眉与清单期号不符，候选留待复核",
+    "REVIEW_REQUIRED": "候选未经复核，不能采信",
+    "UNKNOWN_SCAN": "扫描件不属于该业务键",
+    "STALE_VERSION": "裁决基于过期版本，已被他人更新",
+    "ALREADY_ADOPTED": "该扫描件已是当前采纳页",
+    "PUBLISH_INTERRUPTED": "决定已保存，发布中断，可重试恢复",
+    "BAD_REQUEST": "请求内容不完整或不合法",
+    # 采信理由
+    "BASELINE": "初次导入基线采纳",
+    "CLEARER_SCAN": "清晰度更高的重扫件",
+    "EXACT_COPY": "与原扫描内容一致的副本",
+    "REVIEW_APPROVED": "人工复核后确认采信",
+    "MANUAL_OVERRIDE": "人工指定扫描件",
+    "REJECTED": "复核决定不采信",
 }
-
